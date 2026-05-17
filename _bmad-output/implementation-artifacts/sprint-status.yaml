@@ -1,0 +1,560 @@
+# ============================================================
+# SPRINT STATUS - Hệ thống Điểm danh Sinh viên
+# ============================================================
+# Project: Bài tập lớn - Computer Vision (Đề tài 15)
+# Created: 2026-04-15
+# Last Updated: 2026-05-06 12:00
+# Author: Huynguyen
+# Ref: docs/lich-su-thao-luan.md
+# ============================================================
+
+# ============================================================
+# THÔNG TIN DỰ ÁN
+# ============================================================
+project:
+  name: "Điểm danh sinh viên"
+  description: >
+    Ứng dụng Python sử dụng Computer Vision (OpenCV + face_recognition)
+    để điểm danh sinh viên tự động qua nhận diện khuôn mặt real-time.
+    Giảng viên quét mặt → hệ thống tra TKB → load SV → SV quét mặt
+    → xuất Excel.
+  language_gui: "Tiếng Việt"
+  deliverables:
+    - "Source code Python chạy được"
+    - "Báo cáo Word (bao_cao.docx)"
+    - "Demo live bằng camera"
+
+# ============================================================
+# QUYẾT ĐỊNH KỸ THUẬT
+# ============================================================
+technical_decisions:
+
+  platform:
+    os: "macOS (Apple Silicon M1)"
+    python: "3.13.12 (Miniconda)"
+    venv: ".venv (đã tạo)"
+
+  tech_stack:
+    - "face_recognition 1.3.0 + dlib 20.0.1 (via dlib-bin)"
+    - "OpenCV 4.13.0"
+    - "CustomTkinter 5.2.2"
+    - "SQLite (built-in)"
+    - "openpyxl (xuất Excel)"
+    - "NumPy 2.4.4"
+    - "Pillow 12.2.0"
+
+  architecture:
+    pattern: "MVP (Model-View-Presenter)"
+    model: "src/core/"
+    view: "src/gui/"
+    presenter: "src/main.py"
+    communication: "Event/Callback"
+    config: "config.yaml"
+
+  threading:
+    main_thread: "GUI + camera preview (30fps)"
+    worker_thread: "Nhận diện ngầm (mỗi 0.5-1s)"
+    communication: "Queue (thread-safe)"
+
+  data_storage:
+    database: "SQLite — 8 bảng (data cố định: GV, SV, lớp, TKB, encoding + attendance history)"
+    attendance_result: "Excel (xuất sau mỗi session) + SQLite (lịch sử attendance_sessions + records)"
+    photos: "File trên ổ đĩa (data/teachers/, data/students/)"
+
+  recognition_rules:
+    faces_per_frame: 1
+    photos_per_person: 1
+    scan_interval: "0.5-1 giây"
+    auto_capture: true
+    tolerance: "0.5 - 0.6 (config được)"
+
+  session_rules:
+    tkb_check: "Cho phép quét trước 30 phút"
+    teacher_confirm: "Bấm nút xác nhận sau khi nhận diện GV"
+    switch_class: "Không cho phép"
+    duration: "1 tiếng"
+    end_condition: "Hết giờ tự động HOẶC GV bấm Kết thúc"
+    after_session: "Xuất Excel → giải phóng RAM → quay về chờ GV"
+
+# ============================================================
+# LUỒNG HOẠT ĐỘNG CHÍNH THỨC
+# ============================================================
+flow:
+  step_1_teacher_scan:
+    name: "GV quét mặt"
+    actions:
+      - "Camera nhận diện GV"
+      - "Tra TKB: có tiết trong 30 phút tới?"
+      - "CÓ → hiển thị lớp/môn → GV bấm Xác nhận"
+      - "KHÔNG CÓ / QUÁ SỚM → báo lỗi"
+
+  step_2_student_attendance:
+    name: "SV điểm danh (1 tiếng)"
+    actions:
+      - "Load encoding SV lớp đó vào RAM"
+      - "SV soi mặt (1 người/lúc)"
+      - "Nhận diện ngầm + chụp 1 ảnh tự động"
+      - "Hiển thị 🟢 Có mặt"
+      - "Đếm ngược 60 phút"
+
+  step_3_end_session:
+    name: "Kết thúc"
+    actions:
+      - "SV chưa quét → VẮNG"
+      - "Tự động xuất Excel"
+      - "Giải phóng RAM"
+      - "Quay về step 1"
+
+# ============================================================
+# DATABASE SCHEMA (6 bảng)
+# ============================================================
+database:
+  tables:
+    - name: "teachers"
+      columns: "id, name, teacher_code, photo_path, added_date"
+    - name: "classes"
+      columns: "id, class_code, subject, teacher_id (FK)"
+    - name: "students"
+      columns: "id, name, student_code, photo_path, added_date"
+    - name: "class_students"
+      columns: "class_id (FK), student_id (FK)"
+    - name: "face_encodings"
+      columns: "id, person_type, person_id, encoding (BLOB)"
+    - name: "timetable"
+      columns: "id, class_id (FK), day_of_week, start_time, end_time"
+
+# ============================================================
+# CẤU TRÚC PROJECT
+# ============================================================
+project_structure:
+  - "config.yaml"
+  - "requirements.txt"
+  - "README.md"
+  - "sprint-status.yaml"
+  - "src/main.py                    # PRESENTER"
+  - "src/core/__init__.py"
+  - "src/core/config.py             # Đọc config"
+  - "src/core/database.py           # SQLite CRUD"
+  - "src/core/student_manager.py    # CRUD sinh viên"
+  - "src/core/class_manager.py      # CRUD lớp + GV"
+  - "src/core/recognition.py        # Detect + encode + compare"
+  - "src/core/camera.py             # Webcam"
+  - "src/core/worker.py             # Thread nhận diện ngầm"
+  - "src/core/attendance_session.py # Logic session điểm danh"
+  - "src/core/excel_export.py       # Xuất Excel"
+  - "src/core/events.py             # Event/callback system"
+  - "src/core/report_generator.py   # Tạo báo cáo Word"
+  - "src/gui/__init__.py"
+  - "src/gui/app.py                 # Cửa sổ chính"
+  - "src/gui/camera_panel.py        # Camera preview"
+  - "src/gui/session_panel.py       # Chọn/xác nhận + đếm ngược"
+  - "src/gui/attendance_panel.py    # DS điểm danh"
+  - "src/gui/student_panel.py       # DS sinh viên + xuất Excel"
+  - "data/teachers/"
+  - "data/students/"
+  - "data/exports/"
+  - "data/attendance.db"
+  - "docs/bao_cao.docx"
+  - "docs/lich-su-thao-luan.md"
+
+# ============================================================
+# EPICS & STORIES
+# ============================================================
+
+# ── EPIC 1: SETUP ──────────────────────────────────────────
+epic_1:
+  id: E1
+  title: "Setup & Foundation"
+  status: "done"
+
+  stories:
+    - id: E1-S1
+      title: "Cài đặt môi trường phát triển"
+      status: "done"
+      tasks:
+        - "[x] Tạo venv Python 3.13"
+        - "[x] Cài opencv-python, face-recognition, dlib-bin"
+        - "[x] Cài customtkinter, numpy, Pillow"
+        - "[x] Patch face_recognition_models (pkg_resources → os.path)"
+        - "[x] Test tất cả thư viện OK"
+
+    - id: E1-S2
+      title: "Tạo cấu trúc project + config"
+      status: "done"
+      tasks:
+        - "[x] Tạo cấu trúc thư mục src/core/, src/gui/, data/"
+        - "[x] Tạo config.yaml"
+        - "[x] Tạo requirements.txt"
+        - "[x] Tạo src/core/config.py (đọc config — Singleton, đọc YAML)"
+        - "[x] Tạo src/core/events.py (EventManager pub/sub + EventType constants)"
+        - "[x] Cài openpyxl (3.1.5)"
+
+# ── EPIC 2: DATABASE ───────────────────────────────────────
+epic_2:
+  id: E2
+  title: "Database & Data Layer"
+  status: "in-progress"
+
+  stories:
+    - id: E2-S1
+      title: "Database SQLite (6 bảng)"
+      status: "done"
+      tasks:
+        - "[x] Tạo src/core/database.py"
+        - "[x] Bảng teachers, classes, students"
+        - "[x] Bảng class_students, face_encodings, timetable"
+        - "[x] Class DatabaseManager (connect, create_tables, get_connection)"
+        - "[x] CRUD methods cho từng bảng (add/get/delete teachers, students, classes, timetable, encodings)"
+        - "[x] Auto tạo DB khi chạy lần đầu (os.makedirs + CREATE IF NOT EXISTS)"
+
+    - id: E2-S2
+      title: "Module quản lý SV + GV + Lớp"
+      status: "done"
+      tasks:
+        - "[x] Tạo src/core/student_manager.py"
+        - "[x] Tạo src/core/class_manager.py"
+        - "[x] add/remove/list sinh viên"
+        - "[x] add/remove/list giảng viên"
+        - "[x] add/remove/list lớp học phần"
+        - "[x] Gán SV vào lớp (class_students)"
+        - "[x] Detect mặt từ ảnh → encode → lưu face_encodings"
+        - "[x] Xử lý: ảnh không có mặt"
+
+# ── EPIC 3: FACE RECOGNITION ──────────────────────────────
+epic_3:
+  id: E3
+  title: "Face Recognition Core"
+  status: "todo"
+
+  stories:
+    - id: E3-S1
+      title: "Module nhận diện khuôn mặt"
+      status: "todo"
+      tasks:
+        - "[ ] Tạo src/core/recognition.py"
+        - "[ ] detect_faces(image) → vị trí mặt"
+        - "[ ] encode_face(image, location) → vector 128d"
+        - "[ ] compare_faces(unknown, known_list, tolerance)"
+        - "[ ] find_best_match(encoding, encodings_list) → person + confidence"
+        - "[ ] calculate_confidence(distance) → %"
+
+    - id: E3-S2
+      title: "Module session điểm danh"
+      status: "todo"
+      tasks:
+        - "[ ] Tạo src/core/attendance_session.py"
+        - "[ ] start_session(class_id) → load SV vào RAM"
+        - "[ ] check_timetable(teacher_id) → tra TKB theo giờ (±30 phút)"
+        - "[ ] mark_present(student_id, confidence)"
+        - "[ ] is_already_marked(student_id) → tránh trùng"
+        - "[ ] get_absent_students() → DS vắng"
+        - "[ ] end_session() → finalize + trigger xuất Excel"
+        - "[ ] Timer đếm ngược 1 tiếng → auto end"
+
+# ── EPIC 4: CAMERA & THREADING ─────────────────────────────
+epic_4:
+  id: E4
+  title: "Camera & Real-time Processing"
+  status: "todo"
+
+  stories:
+    - id: E4-S1
+      title: "Camera + Event System"
+      status: "todo"
+      tasks:
+        - "[ ] Tạo src/core/camera.py"
+        - "[ ] CameraManager: open/close, get_frame, start/stop"
+        - "[ ] Hỗ trợ camera_id từ config (mở rộng camera ngoài)"
+        - "[ ] Convert BGR → RGB cho Tkinter"
+
+    - id: E4-S2
+      title: "Worker thread nhận diện ngầm"
+      status: "todo"
+      tasks:
+        - "[ ] Tạo src/core/worker.py"
+        - "[ ] RecognitionWorker(Thread)"
+        - "[ ] Chế độ 1: Chờ GV → so sánh với DB GV"
+        - "[ ] Chế độ 2: Điểm danh SV → so sánh với SV lớp hiện tại"
+        - "[ ] Xử lý 1 mặt / 1 thời điểm"
+        - "[ ] Mỗi 0.5-1 giây lấy frame → detect → encode → compare"
+        - "[ ] Tự chụp 1 ảnh khi nhận diện thành công"
+        - "[ ] Gửi kết quả qua Queue → GUI"
+        - "[ ] start_scanning() / stop_scanning()"
+
+# ── EPIC 5: GUI ────────────────────────────────────────────
+epic_5:
+  id: E5
+  title: "GUI - Giao diện người dùng"
+  status: "todo"
+
+  stories:
+    - id: E5-S1
+      title: "Cửa sổ chính + layout"
+      status: "todo"
+      tasks:
+        - "[ ] Tạo src/gui/app.py"
+        - "[ ] Dark theme, tiếng Việt"
+        - "[ ] Layout 4 panel"
+        - "[ ] Tiêu đề: 📚 HỆ THỐNG ĐIỂM DANH SINH VIÊN"
+
+    - id: E5-S2
+      title: "Panel Camera + Session"
+      status: "todo"
+      tasks:
+        - "[ ] Tạo src/gui/camera_panel.py"
+        - "[ ] Tạo src/gui/session_panel.py"
+        - "[ ] Camera preview 30fps + bounding box"
+        - "[ ] Trạng thái: Chờ GV / Đang điểm danh / Đã kết thúc"
+        - "[ ] Nút [✅ Xác nhận] khi nhận diện GV"
+        - "[ ] Nút [⏹ Kết thúc] điểm danh"
+        - "[ ] Đếm ngược 60:00 → 00:00"
+        - "[ ] Hiển thị tên SV/GV khi nhận diện được"
+
+    - id: E5-S3
+      title: "Panel Điểm danh + Sinh viên"
+      status: "todo"
+      tasks:
+        - "[ ] Tạo src/gui/attendance_panel.py"
+        - "[ ] Tạo src/gui/student_panel.py"
+        - "[ ] DS điểm danh scrollable (tên, MSSV, giờ, ✅/❌)"
+        - "[ ] Thống kê: Có mặt X/Y (Z%)"
+        - "[ ] DS sinh viên + thêm/xóa"
+        - "[ ] Dialog thêm SV (tên, MSSV, chọn ảnh)"
+        - "[ ] Nút [📊 Xuất Excel]"
+
+# ── EPIC 6: EXCEL + INTEGRATION ────────────────────────────
+epic_6:
+  id: E6
+  title: "Excel Export & Integration"
+  status: "done"
+
+  stories:
+    - id: E6-S1
+      title: "Module xuất Excel"
+      status: "done"
+      tasks:
+        - "[x] Tạo src/core/excel_export.py"
+        - "[x] export_session(): xuất kết quả 1 session"
+        - "[x] Format: Ngày, Môn, Lớp, GV, MSSV, Tên SV, Trạng thái, Giờ, % khớp"
+        - "[x] Lưu data/exports/YYYY-MM-DD_LopXX.xlsx"
+
+    - id: E6-S2
+      title: "Ghép nối toàn bộ (main.py)"
+      status: "done"
+      tasks:
+        - "[x] Tạo src/main.py"
+        - "[x] Khởi tạo DB, managers, camera, worker, GUI"
+        - "[x] Kết nối events: worker ↔ session ↔ GUI"
+        - "[x] Flow: chờ GV → xác nhận → điểm danh → xuất → reset"
+        - "[x] Graceful shutdown"
+        - "[x] Test end-to-end (25 tests)"
+
+# ── EPIC 7: BÁO CÁO ───────────────────────────────────────
+epic_7:
+  id: E7
+  title: "Tài liệu & Báo cáo (Word)"
+  status: "in-progress"
+
+  stories:
+    - id: E7-S1
+      title: "Chương 1-2: Lý thuyết + Phân tích"
+      status: "done"
+      tasks:
+        - "[x] Chương 1: Tổng quan Computer Vision (khái niệm, đặc điểm, ứng dụng, thư viện)"
+        - "[x] Chương 2: Phân tích bài toán (mô tả, yêu cầu, flowchart)"
+
+    - id: E7-S2
+      title: "Chương 3-4: Kỹ thuật + Mô hình"
+      status: "done"
+      tasks:
+        - "[x] Chương 3: Cài đặt & Tiền xử lý (môi trường, data, patch Python 3.13)"
+        - "[x] Chương 4: Xây dựng mô hình (HOG, CNN ResNet-29, encoding 128d, Euclidean)"
+
+    - id: E7-S3
+      title: "Chương 5-6: Kết quả + Kết luận"
+      status: "done"
+      tasks:
+        - "[x] Chương 5: Hiển thị & Kết quả (screenshots, demo, thử nghiệm)"
+        - "[x] Chương 6: Kết luận (đạt được, hạn chế, hướng phát triển)"
+
+# ── EPIC 8: QUẢN LÝ HỆ THỐNG ──────────────────────────────
+epic_8:
+  id: E8
+  title: "Màn hình Quản lý (Admin)"
+  status: "done"
+
+  stories:
+    - id: E8-S1
+      title: "Admin Window — GUI quản lý GV/SV/Lớp/TKB"
+      status: "done"
+      tasks:
+        - "[x] Thêm get_all_timetable() vào database.py"
+        - "[x] Tạo src/gui/admin_window.py (CTkToplevel + CTkTabview)"
+        - "[x] Tab Giảng viên: list + thêm (tên, mã, ảnh) + xóa"
+        - "[x] Tab Sinh viên: list + thêm (tên, MSSV, ảnh) + xóa"
+        - "[x] Tab Lớp học: list + thêm (mã, môn, GV) + xóa + gán SV"
+        - "[x] Tab TKB: list + thêm (lớp, thứ, giờ) + xóa"
+
+    - id: E8-S2
+      title: "Presenter wiring — kết nối Admin vào main flow"
+      status: "done"
+      tasks:
+        - "[x] Thêm EventType.ADMIN_REQUESTED vào events.py"
+        - "[x] Thêm nút [⚙️ Quản lý] vào SessionPanel (chỉ hiện Mode 1)"
+        - "[x] Subscribe ADMIN_REQUESTED trong Presenter"
+        - "[x] Pause/resume worker khi admin mở/đóng"
+        - "[x] Reload encodings sau khi admin đóng"
+        - "[x] Camera alive check trước khi resume"
+        - "[x] 38 tests pass (7 new + 29 baseline + 2 updated)"
+
+# ── EPIC 9: LỊCH SỬ ĐIỂM DANH ─────────────────────────────
+epic_9:
+  id: E9
+  title: "Lịch sử Điểm danh (Attendance History)"
+  status: "done"
+
+  stories:
+    - id: E9-S1
+      title: "Lưu lịch sử điểm danh vào Database"
+      status: "done"
+      tasks:
+        - "[x] Thêm bảng attendance_sessions (id, class_id FK, teacher_id FK, session_date, start_time, end_time, total_students, present_count)"
+        - "[x] Thêm bảng attendance_records (id, session_id FK, student_id FK, is_present, confidence, mark_time, image_path)"
+        - "[x] Thêm CRUD methods vào database.py: save_session(), get_sessions(), get_session_records()"
+        - "[x] Hook vào Presenter._on_session_end_requested() — tự động lưu DB trước khi xuất Excel (best-effort)"
+        - "[x] Thêm query thống kê: get_student_absence_count(), get_sessions_by_class()"
+        - "[x] Unit tests: 10 DB tests + 2 Presenter tests (total 68 pass, 0 new regressions)"
+
+    - id: E9-S2
+      title: "GUI Tab Lịch sử điểm danh trong Admin"
+      status: "done"
+      tasks:
+        - "[x] Thêm Tab '📋 Lịch sử' vào AdminWindow (CTkTabview)"
+        - "[x] Bảng danh sách sessions: Ngày, Lớp, Môn, GV, Có mặt/Tổng"
+        - "[x] Click vào session → hiển thị chi tiết: DS sinh viên + trạng thái (✅/❌)"
+        - "[x] Filter theo lớp học (ComboBox + dynamic refresh)"
+        - "[x] Filter theo khoảng thời gian (từ ngày — đến ngày)"
+        - "[x] Thống kê tổng hợp: tỷ lệ đi học trung bình (MVP)"
+        - "[x] Nút xuất lại Excel cho session đã chọn"
+        - "[x] Code review: 8 findings remediated (F1-F11), 14 tests pass"
+
+    - id: E9-S3
+      title: "Thông báo + mở file sau khi kết thúc session"
+      status: "done"
+      tasks:
+        - "[x] Hiển thị popup thông báo khi xuất Excel thành công (đường dẫn file)"
+        - "[x] Nút [📂 Mở file] — mở file Excel bằng ứng dụng mặc định"
+        - "[x] Nút [📋 Xem lịch sử] — mở thẳng tab Lịch sử trong Admin"
+        - "[x] Hiển thị tóm tắt: Có mặt X/Y (Z%) ngay trên GUI sau khi kết thúc"
+
+# ── EPIC 10: CHỐNG GIẢ MẠO KHUÔN MẶT ─────────────────────
+epic_10:
+  id: E10
+  title: "Anti-Spoofing / Liveness Detection (Chống giả mạo khuôn mặt)"
+  status: "done"
+
+  stories:
+    - id: E10-S1
+      title: "Module Liveness Detection (Chống giả mạo khuôn mặt)"
+      status: "done"
+      tasks:
+        - "[x] Tạo src/core/liveness.py — class LivenessDetector"
+        - "[x] Implement _check_texture_quality() — Laplacian variance"
+        - "[x] Implement _check_color_distribution() — YCrCb histogram"
+        - "[x] Implement _check_moire_pattern() — FFT frequency analysis"
+        - "[x] Implement _check_reflection() — Specular highlight detection"
+        - "[x] Implement _check_edge_density() — Canny edge density"
+        - "[x] Implement check_liveness() — weighted scoring pipeline"
+        - "[x] Config integration — section liveness trong config.yaml"
+        - "[x] Unit tests ≥10 test cases → 21 tests"
+
+    - id: E10-S2
+      title: "Tích hợp Anti-Spoofing vào Pipeline + GUI Feedback"
+      status: "done"
+      tasks:
+        - "[x] Thêm SPOOF_DETECTED vào EventType enum"
+        - "[x] Tích hợp LivenessDetector vào RecognitionWorker"
+        - "[x] Thêm _on_spoof_detected() handler vào Presenter"
+        - "[x] GUI feedback: bounding box đỏ + text cảnh báo"
+        - "[x] Toggle on/off qua config (liveness.enabled)"
+        - "[x] Unit tests ≥5 test cases"
+
+
+# ============================================================
+# DEVELOPMENT STATUS (BMAD Format)
+# ============================================================
+# STATUS DEFINITIONS:
+#   done          - Story hoàn thành, đã review
+#   in-progress   - Đang được dev
+#   ready-for-dev - Story file đã tạo, sẵn sàng dev
+#   backlog       - Chưa tạo story file
+# ============================================================
+development_status:
+
+  # ── EPIC 1: Setup & Foundation ──
+  epic-1: done
+  1-1-setup-dev-environment: done
+  1-2-project-structure-config: done
+
+  # ── EPIC 2: Database & Data Layer ──
+  epic-2: in-progress
+  2-1-database-sqlite: done
+  2-2-student-teacher-manager: done
+
+  # ── EPIC 3: Face Recognition Core ──
+  epic-3: in-progress
+  3-1-face-recognition-module: done
+  3-2-attendance-session: done
+
+  # ── EPIC 4: Camera & Real-time Processing ──
+  epic-4: in-progress
+  4-1-camera-event-system: done
+  4-2-worker-thread: done
+
+  # ── EPIC 5: GUI - Giao diện người dùng ──
+  epic-5: in-progress
+  5-1-main-window-layout: done
+  5-2-camera-session-panel: done
+  5-3-attendance-student-panel: done
+
+  # ── EPIC 6: Excel Export & Integration ──
+  epic-6: done
+  6-1-excel-export: done
+  6-2-integration-main: done
+
+  # ── EPIC 7: Tài liệu & Báo cáo ──
+  epic-7: done
+  7-1-report-theory-analysis: done
+  7-2-report-technique-model: done
+  7-3-report-results-conclusion: done
+
+  # ── EPIC 8: Quản lý hệ thống ──
+  epic-8: done
+  8-1-admin-window-gui: done
+  8-2-presenter-wiring: done
+
+  # ── EPIC 9: Lịch sử Điểm danh ──
+  epic-9: done
+  9-1-attendance-history-db: done
+  9-2-attendance-history-gui: done
+  9-3-post-session-notification: done
+
+  # ── EPIC 10: Anti-Spoofing / Liveness Detection ──
+  epic-10: done
+  10-1-liveness-detection-module: done
+  10-2-liveness-integration-pipeline: done
+
+# ============================================================
+# TỔNG QUAN
+# ============================================================
+summary:
+  total_epics: 10
+  total_stories: 23
+  completed: 23
+  in_review: 0
+  ready_for_dev: 0           # None
+  backlog: 0
+  progress_percent: 100
+  estimated_code: "~2200-2500 dòng"
+  order: "E1 → E2 → E3 → E4 → E5 → E6 → E7 → E8 → E9 → E10"
+  next_action: "All stories complete — project finished"

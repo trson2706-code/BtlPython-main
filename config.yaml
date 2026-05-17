@@ -1,0 +1,42 @@
+# ============================================================
+# CẤU HÌNH HỆ THỐNG ĐIỂM DANH SINH VIÊN
+# ============================================================
+
+camera:
+  camera_id: 0                  # 0: Webcam mặc định, 1: Camera cắm ngoài
+  resolution: [640, 480]        # Chiều rộng, chiều cao
+  fps: 30                       # Tốc độ khung hình (cho hiển thị)
+
+recognition:
+  tolerance: 0.4               # Mức độ sai số cho phép (càng thấp càng khắt khe, mặc định face_recognition là 0.6)
+  scan_interval: 0.1            # Giây. Tần suất worker thread quét model
+  model: "hog"                  # 'hog' (nhanh, ít tốn CPU) hoặc 'cnn' (chính xác cao, cần GPU)
+
+session:
+  teacher_check_window: 30      # Số phút cho phép giảng viên quét mặt trước / sau giờ học bắt đầu
+  student_scan_time: 60         # Thời gian (phút) cho sinh viên điểm danh
+
+paths:
+  db_path: "data/attendance.db"
+  teachers_dir: "data/teachers"
+  students_dir: "data/students"
+  exports_dir: "data/exports"
+
+# ============================================================
+# LIVENESS DETECTION (Chống giả mạo khuôn mặt)
+# ============================================================
+liveness:
+  enabled: true                   # true: bật kiểm tra anti-spoofing, false: bypass
+  min_face_size: 30               # Kích thước tối thiểu ROI (pixel) — bỏ qua nếu nhỏ hơn
+  texture_threshold: 80.0         # Laplacian variance >= ngưỡng → score = 1.0
+  color_threshold: 0.4            # Skin ratio >= ngưỡng → score = 1.0
+  moire_threshold: 0.3            # High-freq ratio >= ngưỡng → score = 0.0
+  reflection_threshold: 0.5       # Bright ratio >= ngưỡng → score = 0.0
+  edge_density_threshold: 0.15    # Edge ratio >= ngưỡng → score = 1.0
+  final_score_threshold: 0.6      # Weighted score >= ngưỡng → is_live = true
+  weights:
+    texture: 0.30                 # Quan trọng nhất — phân biệt rõ ràng nhất
+    color: 0.20                   # Khá tốt cho màn hình backlit
+    moire: 0.20                   # Rất hiệu quả cho điện thoại/tablet
+    reflection: 0.15              # Phụ trợ — phụ thuộc vào ánh sáng
+    edge_density: 0.15            # Phụ trợ — tương tự texture nhưng khác thuật toán
